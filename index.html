@@ -341,7 +341,7 @@
         <button id="ctrls-btn" class="ctrl-btn">Ctrls</button>
         <button id="info-btn" class="ctrl-btn">Info</button>
         <button id="grab-btn" class="ctrl-btn">Grab</button>
-        <div id="overlay-controls" style="display:flex; flex-direction:column; gap:3px; margin-top:4px; align-items:flex-start;">
+        <div style="display:flex; flex-direction:column; gap:3px; margin-top:4px; align-items:flex-start;">
           <label style="font-family: var(--sans); font-size: 9.5px; color: #6b6a60;">Overlay opacity</label>
           <div style="display:flex; align-items:flex-end; gap:8px;">
             <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
@@ -916,7 +916,9 @@ window.addEventListener('mousemove', (e) => {
     camera.getWorldDirection(camRight);
     const right = new THREE.Vector3().crossVectors(camera.up, camRight).normalize();
     target.addScaledVector(right, dx * panSpeed);
-    target.y += dy * panSpeed;
+    // Slide along the ground (never up/down in elevation): drag down = terrain slides down the screen.
+    const fwd = new THREE.Vector3(Math.sin(theta), 0, Math.cos(theta)).negate();   // horizontal direction the camera faces
+    target.addScaledVector(fwd, dy * panSpeed / Math.max(Math.cos(phi), 0.3));
     updateCamera();
   }
   prevX = e.clientX; prevY = e.clientY;
@@ -1374,21 +1376,14 @@ const rightSideBoxes = [
   document.getElementById('stats')
 ];
 
-// Ctrls toggles the left stack AND the overlay opacity slider + Plan/Earth radios together
-const overlayControls = document.getElementById('overlay-controls');
-function setCtrlsVisible(show) {
-  leftStack.style.display = show ? 'flex' : 'none';
-  overlayControls.style.display = show ? 'flex' : 'none';
-}
-function setInfoVisible(show) {
-  rightSideBoxes.forEach(el => { el.style.display = show ? '' : 'none'; });
-}
 ctrlsBtn.addEventListener('click', () => {
-  setCtrlsVisible(leftStack.style.display === 'none');
+  const hidden = leftStack.style.display === 'none';
+  leftStack.style.display = hidden ? 'flex' : 'none';
 });
 
 infoBtn.addEventListener('click', () => {
-  setInfoVisible(rightSideBoxes[0].style.display === 'none');
+  const hidden = rightSideBoxes[0].style.display === 'none';
+  rightSideBoxes.forEach(el => { el.style.display = hidden ? '' : 'none'; });
 });
 
 // ---- Save / Load (CSV) ----
@@ -1404,18 +1399,11 @@ function gatherSettings() {
     lightness: lightnessSlider.value,
     contrast: contrastSlider.value,
     hue: hueSlider.value,
-    saturation: saturationSlider.value,
     bands: bandSlider.value,
     rangeMin: rangeMinInput.value,
     rangeMax: rangeMaxInput.value,
     clampOutside: clampToggle.checked,
     wireframeVisible: wireframeToggle.checked,
-    // Overlay (Plan / Earth) opacity slider + selection
-    overlayOpacity: bitmapSlider.value,
-    overlayType: document.querySelector('input[name="overlay-type"]:checked').value,
-    // Panel visibility (Ctrls / Info buttons)
-    ctrlsVisible: leftStack.style.display !== 'none',
-    infoVisible: rightSideBoxes[0].style.display !== 'none',
     // Viewport / camera orbit state, so Load restores the exact view, not just the data
     viewTheta: theta,
     viewPhi: phi,
@@ -1439,7 +1427,6 @@ function applySettings(s) {
   lightnessSlider.value = s.lightness;
   contrastSlider.value = s.contrast;
   hueSlider.value = s.hue;
-  if (s.saturation !== undefined) saturationSlider.value = s.saturation;
   applyImageAdjust();
 
   bandSlider.value = s.bands;
@@ -1450,18 +1437,6 @@ function applySettings(s) {
 
   wireframeToggle.checked = (s.wireframeVisible === 'true' || s.wireframeVisible === true);
   wireframe.visible = wireframeToggle.checked;
-
-  // Overlay opacity + Plan/Earth selection (older saved files won't have these fields)
-  if (s.overlayOpacity !== undefined) bitmapSlider.value = s.overlayOpacity;
-  if (s.overlayType === 'plan' || s.overlayType === 'earth') {
-    document.getElementById(s.overlayType === 'earth' ? 'overlay-earth' : 'overlay-plan').checked = true;
-  }
-  applyOverlayOpacity();
-
-  // Panel visibility (older saved files won't have these fields)
-  const asBool = v => (v === 'true' || v === true);
-  if (s.ctrlsVisible !== undefined) setCtrlsVisible(asBool(s.ctrlsVisible));
-  if (s.infoVisible !== undefined) setInfoVisible(asBool(s.infoVisible));
 
   // Restore viewport/camera orbit state, if present (older saved files won't have these fields)
   if (s.viewTheta !== undefined) {
